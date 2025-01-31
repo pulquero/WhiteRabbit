@@ -25,9 +25,10 @@ import java.util.Enumeration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import oracle.jdbc.pool.OracleDataSource;
 import org.ohdsi.databases.configuration.DbSettings;
 import org.ohdsi.databases.configuration.DbType;
+
+import oracle.jdbc.pool.OracleDataSource;
 
 public class DBConnector {
 
@@ -58,6 +59,8 @@ public class DBConnector {
 			return new DBConnection(DBConnector.connectToTeradata(server, user, password), dbType, verbose);
 		else if (dbType.equalsDbType(DbType.BIGQUERY))
 			return new DBConnection(DBConnector.connectToBigQuery(server, domain, user, password), dbType, verbose);
+		else if (dbType.equalsDbType(DbType.IMPALA))
+			return new DBConnection(DBConnector.connectToImpala(server, user, password), dbType, verbose);
 		else
 			return null;
 	}
@@ -282,6 +285,22 @@ public class DBConnector {
 			return DriverManager.getConnection(url);
 		} catch (SQLException e1) {
 			throw new RuntimeException("Simba URL failed: Cannot connect to DB server: " + e1.getMessage());
+		}
+	}
+
+	public static Connection connectToImpala(String server, String user, String password) {
+		String driverClassName = "com.cloudera.impala.jdbc.Driver";
+		try {
+			Class.forName(driverClassName);
+		} catch(ClassNotFoundException e) {
+			throw new RuntimeException("Cannot find JDBC driver (" + driverClassName + "). Make sure the jars are in the path.\n" +
+					"It is not part of WhiteRabbit due to licensing restrictions. You need to install this yourself.");
+		}
+		String url = "jdbc:impala://" + server;
+		try {
+			return DriverManager.getConnection(url, user, password);
+		} catch (SQLException e1) {
+			throw new RuntimeException("Cannot connect to DB server (" + url + "): " + e1.getMessage());
 		}
 	}
 

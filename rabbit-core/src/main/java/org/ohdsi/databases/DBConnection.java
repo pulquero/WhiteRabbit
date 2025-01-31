@@ -17,16 +17,21 @@
  ******************************************************************************/
 package org.ohdsi.databases;
 
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.commons.lang.StringUtils;
 import org.ohdsi.databases.configuration.DbType;
 import org.ohdsi.utilities.files.Row;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.sql.*;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.List;
 
 /*
  * DBConnection is a wrapper for java.sql.Connection
@@ -99,7 +104,7 @@ public class DBConnection {
         if (this.hasStorageHandler()) {
             this.getStorageHandler().use(database);
         } else {
-            if (database == null || dbType == DbType.MS_ACCESS || dbType == DbType.BIGQUERY || dbType == DbType.AZURE) {
+            if (database == null || dbType == DbType.MS_ACCESS || dbType == DbType.BIGQUERY || dbType == DbType.AZURE || dbType == DbType.IMPALA) {
                 return;
             }
 
@@ -192,7 +197,7 @@ public class DBConnection {
 
         if (dbType.supportsStorageHandler()) {
             fieldInfos = dbType.getStorageHandler().fetchTableStructure(table, scanParameters);
-        } else if (dbType == DbType.MS_ACCESS) {
+        } else if (dbType == DbType.MS_ACCESS || dbType == DbType.IMPALA) {
             ResultSet rs = getFieldNamesFromJDBC(table);
             try {
                 while (rs.next()) {
@@ -257,7 +262,7 @@ public class DBConnection {
     }
 
     public ResultSet getFieldNamesFromJDBC(String table) {
-        if (dbType == DbType.MS_ACCESS) {
+        if (dbType == DbType.MS_ACCESS || dbType == DbType.IMPALA) {
             try {
                 DatabaseMetaData metadata = connection.getMetaData();
                 return metadata.getColumns(null, null, table, null);
@@ -285,7 +290,7 @@ public class DBConnection {
         } else {
             if (dbType == DbType.SQL_SERVER || dbType == DbType.AZURE)
                 query = "SELECT * FROM [" + table.replaceAll("\\.", "].[") + "] TABLESAMPLE (" + sampleSize + " ROWS)";
-            else if (dbType == DbType.MYSQL)
+            else if (dbType == DbType.MYSQL || dbType == DbType.IMPALA)
                 query = "SELECT * FROM " + table + " ORDER BY RAND() LIMIT " + sampleSize;
             else if (dbType == DbType.PDW)
                 query = "SELECT TOP " + sampleSize + " * FROM [" + table.replaceAll("\\.", "].[") + "] ORDER BY RAND()";
