@@ -37,16 +37,19 @@ import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Hashtable;
 
 import javax.swing.AbstractAction;
 import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 
 import org.ohdsi.rabbitInAHat.Arrow.HighlightStatus;
-import org.ohdsi.rabbitInAHat.dataModel.*;
+import org.ohdsi.rabbitInAHat.dataModel.ItemToItemMap;
+import org.ohdsi.rabbitInAHat.dataModel.MappableItem;
+import org.ohdsi.rabbitInAHat.dataModel.Mapping;
+import org.ohdsi.rabbitInAHat.dataModel.Table;
 import org.ohdsi.utilities.collections.IntegerComparator;
 
 public class MappingPanel extends JPanel implements MouseListener, MouseMotionListener {
@@ -70,9 +73,9 @@ public class MappingPanel extends JPanel implements MouseListener, MouseMotionLi
 	private int						stemX;
 
 	private Mapping<?>				mapping;
-	private List<LabeledRectangle>	sourceComponents			= new ArrayList<LabeledRectangle>();
-	private List<LabeledRectangle>	cdmComponents				= new ArrayList<LabeledRectangle>();
-	private List<Arrow>				arrows						= new ArrayList<Arrow>();
+	private List<LabeledRectangle>	sourceComponents			= new ArrayList<>();
+	private List<LabeledRectangle>	cdmComponents				= new ArrayList<>();
+	private List<Arrow>				arrows						= new ArrayList<>();
 	private LabeledRectangle		dragRectangle				= null;
 	private LabeledRectangle		lastSelectedRectangle		= null;
 	private Arrow					dragArrow					= null;
@@ -158,6 +161,10 @@ public class MappingPanel extends JPanel implements MouseListener, MouseMotionLi
 
 	public void setShowOnlyConnectedItems(boolean value) {
 		showOnlyConnectedItems = value;
+		renderModel();
+	}
+
+	public void refresh() {
 		renderModel();
 	}
 
@@ -466,6 +473,7 @@ public class MappingPanel extends JPanel implements MouseListener, MouseMotionLi
 			this.minimizing = minimizing;
 		}
 
+		@Override
 		public void run() {
 			if (minimizing) {
 				LabeledRectangle sourceComponent = zoomArrow.getSource();
@@ -705,7 +713,7 @@ public class MappingPanel extends JPanel implements MouseListener, MouseMotionLi
 
 	}
 
-	private List<ResizeListener>	resizeListeners	= new ArrayList<ResizeListener>();
+	private List<ResizeListener>	resizeListeners	= new ArrayList<>();
 
 	public void addResizeListener(ResizeListener resizeListener) {
 		resizeListeners.add(resizeListener);

@@ -41,7 +41,21 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.swing.*;
+import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JRadioButtonMenuItem;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JViewport;
+import javax.swing.KeyStroke;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.UIManager;
 import javax.swing.border.TitledBorder;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -51,9 +65,12 @@ import org.ohdsi.rabbitInAHat.dataModel.Database;
 import org.ohdsi.rabbitInAHat.dataModel.Database.CDMVersion;
 import org.ohdsi.rabbitInAHat.dataModel.ETL;
 import org.ohdsi.rabbitInAHat.dataModel.Field;
+import org.ohdsi.rabbitInAHat.dataModel.Mapping;
 import org.ohdsi.rabbitInAHat.dataModel.StemTableFactory;
 import org.ohdsi.rabbitInAHat.dataModel.Table;
 import org.ohdsi.utilities.Version;
+
+import com.cedarsoftware.util.io.JsonReader;
 
 /**
  * This is the main class for the RabbitInAHat application
@@ -76,6 +93,7 @@ public class RabbitInAHatMain implements ResizeListener {
 	public final static String		ACTION_FILTER						= "Filter";
 	public final static String		ACTION_MAKE_MAPPING					= "Make Mappings";
 	public final static String		ACTION_REMOVE_MAPPING				= "Remove Mappings";
+	public final static String		ACTION_IMPORT_MAPPINGS				= "Import Mappings";
 	public final static String		ACTION_SET_TARGET_V4  = "CDM v4";
 	public final static String 		ACTION_SET_TARGET_V50 = "CDM v5.0";
 	public final static String 		ACTION_SET_TARGET_V51 = "CDM v5.1";
@@ -132,6 +150,7 @@ public class RabbitInAHatMain implements ResizeListener {
 
 		frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 		frame.addWindowListener(new WindowAdapter() {
+			@Override
 			public void windowClosing(WindowEvent e) {
 				doAskIfSavedBeforeExit();
 			}
@@ -296,6 +315,7 @@ public class RabbitInAHatMain implements ResizeListener {
 		addMenuItem(arrowMenu, ACTION_REMOVE_MAPPING, evt -> this.doRemoveMappings(), KeyEvent.VK_R);
 		addMenuItem(arrowMenu, ACTION_MARK_COMPLETED, evt -> this.doMarkCompleted(), KeyEvent.VK_D);
 		addMenuItem(arrowMenu, ACTION_UNMARK_COMPLETED, evt -> this.doUnmarkCompleted(), KeyEvent.VK_I);
+		addMenuItem(arrowMenu, ACTION_IMPORT_MAPPINGS, evt -> this.doImportMappings(), null);
 
 		JMenu exportMenu = new JMenu("Generate");
 		menuBar.add(exportMenu);
@@ -539,6 +559,45 @@ public class RabbitInAHatMain implements ResizeListener {
 			this.fieldMappingPanel.removeMapSelectedSourceAndTarget();
 		}
 
+	}
+
+	private void doImportMappings() {
+		String filename = chooseOpenPath(FILE_FILTER_JSON);
+		if (filename != null) {
+			doImportMappings(filename);
+		}
+	}
+
+	private void doImportMappings(String filename) {
+		Object[] result;
+		try {
+			try (FileInputStream fileInputStream = new FileInputStream(filename); JsonReader jr = new JsonReader(fileInputStream, true)) {
+				result = (Object[]) jr.readObject();
+			}
+			for (Object entry : result) {
+				Map<String,String> mapping = (Map<String,String>) entry;
+				String sourceTable = mapping.get("sourceTable");
+				String sourceField = mapping.get("sourceField");
+				String targetTable = mapping.get("targetTable");
+				String targetField = mapping.get("targetField");
+				Table sourceDbTable = ObjectExchange.etl.getSourceDatabase().getTableByName(sourceTable);
+				Table targetDbTable = ObjectExchange.etl.getTargetDatabase().getTableByName(targetTable);
+				Mapping<Table> tableMapping = ObjectExchange.etl.getTableToTableMapping();
+				if (tableMapping.getSourceToTargetMap(sourceDbTable, targetDbTable) == null) {
+					tableMapping.addSourceToTargetMap(sourceDbTable, targetDbTable);
+				}
+				Field sourceDbField = sourceDbTable.getFieldByName(sourceField);
+				Field targetDbField = targetDbTable.getFieldByName(targetField);
+				Mapping<Field> fieldMapping = ObjectExchange.etl.getFieldToFieldMapping(sourceDbTable, targetDbTable);
+				if (fieldMapping.getSourceToTargetMap(sourceDbField, targetDbField) == null) {
+					fieldMapping.addSourceToTargetMap(sourceDbField, targetDbField);
+				}
+			}
+		} catch (Exception exception) {
+			exception.printStackTrace();
+		}
+		tableMappingPanel.refresh();
+		fieldMappingPanel.refresh();
 	}
 
 	private void doDiscardCounts() {
