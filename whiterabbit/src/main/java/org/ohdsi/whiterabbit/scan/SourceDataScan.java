@@ -17,39 +17,56 @@
  ******************************************************************************/
 package org.ohdsi.whiterabbit.scan;
 
-import java.io.*;
+import static java.lang.Long.max;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import com.epam.parso.Column;
-import com.epam.parso.SasFileProperties;
-import com.epam.parso.SasFileReader;
-import com.epam.parso.impl.SasFileReaderImpl;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.commons.io.FileUtils;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.ohdsi.databases.FieldInfo;
+import org.ohdsi.databases.QueryResult;
+import org.ohdsi.databases.RichConnection;
+import org.ohdsi.databases.ScanParameters;
 import org.ohdsi.databases.configuration.DbSettings;
 import org.ohdsi.databases.configuration.DbType;
-import org.ohdsi.databases.RichConnection;
-import org.ohdsi.databases.QueryResult;
-import org.ohdsi.databases.*;
 import org.ohdsi.rabbitInAHat.dataModel.Table;
-import org.ohdsi.utilities.*;
+import org.ohdsi.utilities.ScanFieldName;
+import org.ohdsi.utilities.ScanSheetName;
+import org.ohdsi.utilities.StringUtilities;
+import org.ohdsi.utilities.Version;
 import org.ohdsi.utilities.collections.Pair;
 import org.ohdsi.utilities.files.ReadTextFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static java.lang.Long.max;
+import com.epam.parso.Column;
+import com.epam.parso.SasFileProperties;
+import com.epam.parso.SasFileReader;
+import com.epam.parso.impl.SasFileReaderImpl;
 
 public class SourceDataScan implements ScanParameters {
 	static Logger logger = LoggerFactory.getLogger(SourceDataScan.class);
@@ -94,18 +111,22 @@ public class SourceDataScan implements ScanParameters {
 		this.sampleSize = sampleSize;
 	}
 
+	@Override
 	public boolean doCalculateNumericStats() {
 		return calculateNumericStats;
 	}
 
+	@Override
 	public int getMaxValues() {
 		return maxValues;
 	}
 
+	@Override
 	public boolean doScanValues() {
 		return scanValues;
 	}
 
+	@Override
 	public int getNumStatsSamplerSize() {
 		return numStatsSamplerSize;
 	}
@@ -118,10 +139,12 @@ public class SourceDataScan implements ScanParameters {
 		this.minCellCount = minCellCount;
 	}
 
+	@Override
 	public int getMinCellCount() {
 		return minCellCount;
 	}
 
+	@Override
 	public int getSampleSize() {
 		return sampleSize;
 	}
@@ -301,6 +324,10 @@ public class SourceDataScan implements ScanParameters {
 		}
 
 		createMetaSheet();
+		createDataTypeSheet();
+
+		// Save some memory by dereferencing tables already included in the report:
+		tableToFieldInfos.clear();
 
 		try (FileOutputStream out = new FileOutputStream(new File(filename))) {
 			workbook.write(out);
@@ -347,11 +374,12 @@ public class SourceDataScan implements ScanParameters {
 		addRow(overviewSheet, overviewHeader.toArray());
 
 		// Add fields
-		for (Table table : tableToFieldInfos.keySet()) {
+		for (Map.Entry<Table,List<FieldInfo>> entry : tableToFieldInfos.entrySet()) {
+			Table table = entry.getKey();
 			String tableName = table.getName();
 			String tableNameIndexed = indexedTableNameLookup.get(tableName);
 
-			for (FieldInfo fieldInfo : tableToFieldInfos.get(table)) {
+			for (FieldInfo fieldInfo : entry.getValue()) {
 				List<Object> values = new ArrayList<>(Arrays.asList(
 						tableNameIndexed,
 						fieldInfo.name,
@@ -403,7 +431,8 @@ public class SourceDataScan implements ScanParameters {
 				ScanFieldName.N_FIELDS_EMPTY
 		);
 
-		for (Table table : tableToFieldInfos.keySet()) {
+		for (Map.Entry<Table,List<FieldInfo>> entry : tableToFieldInfos.entrySet()) {
+			Table table = entry.getKey();
 			String tableName = table.getName();
 			String tableNameIndexed = indexedTableNameLookup.get(tableName);
 			String description = table.getComment();
@@ -411,7 +440,7 @@ public class SourceDataScan implements ScanParameters {
 			long rowCheckedCount = -1;
 			long nFields = 0;
 			long nFieldsEmpty = 0;
-			for (FieldInfo fieldInfo : tableToFieldInfos.get(table)) {
+			for (FieldInfo fieldInfo : entry.getValue()) {
 				rowCount = max(rowCount, fieldInfo.rowCount);
 				rowCheckedCount = max(rowCheckedCount, fieldInfo.nProcessed);
 				nFields += 1;
@@ -470,8 +499,6 @@ public class SourceDataScan implements ScanParameters {
 				}
 				addRow(valueSheet, row);
 			}
-			// Save some memory by dereferencing tables already included in the report:
-			tableToFieldInfos.remove(table);
 		}
 	}
 
@@ -496,6 +523,42 @@ public class SourceDataScan implements ScanParameters {
 		addRow(metaSheet, "calculateNumericStats", this.calculateNumericStats);
 		addRow(metaSheet, "numStatsSamplerSize", this.calculateNumericStats ? this.numStatsSamplerSize: 0);
 
+	}
+
+	private void createDataTypeSheet() {
+		Sheet sheet = workbook.createSheet(ScanSheetName.FIELD_DATA_TYPES);
+
+		// Create heading
+		Object[] header = new String[] {
+				ScanFieldName.TABLE,
+				ScanFieldName.FIELD,
+				ScanFieldName.TYPE,
+				ScanFieldName.TYPE_LENGTH,
+				ScanFieldName.DECIMAL_DIGITS,
+				ScanFieldName.RADIX
+		};
+		addRow(sheet, header);
+
+		// Add fields
+		for (Map.Entry<Table,List<FieldInfo>> entry : tableToFieldInfos.entrySet()) {
+			Table table = entry.getKey();
+			String tableName = table.getName();
+			String tableNameIndexed = indexedTableNameLookup.get(tableName);
+
+			for (FieldInfo fieldInfo : entry.getValue()) {
+				Object[] values = new Object[] {
+						tableNameIndexed,
+						fieldInfo.name,
+						fieldInfo.type,
+						fieldInfo.typeLength,
+						fieldInfo.decimalDigits,
+						fieldInfo.precisionRadix
+				};
+
+				addRow(sheet, values);
+			}
+			addRow(sheet, "");
+		}
 	}
 
 	private void removeEmptyTables() {

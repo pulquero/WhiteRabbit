@@ -198,18 +198,19 @@ public class DBConnection {
         if (dbType.supportsStorageHandler()) {
             fieldInfos = dbType.getStorageHandler().fetchTableStructure(table, scanParameters);
         } else if (dbType == DbType.MS_ACCESS || dbType == DbType.IMPALA) {
-            ResultSet rs = getFieldNamesFromJDBC(table);
             try {
-                while (rs.next()) {
-                    FieldInfo fieldInfo = new FieldInfo(scanParameters, rs.getString("COLUMN_NAME"));
-                    fieldInfo.type = rs.getString("TYPE_NAME");
-                    fieldInfo.rowCount = connection.getTableSize(table);
-                    fieldInfos.add(fieldInfo);
-                }
+                long tableSize = connection.getTableSize(table);
+                try (ResultSet rs = getFieldNamesFromJDBC(table)) {
+                    while (rs.next()) {
+                        FieldInfo fieldInfo = jdbcRowToFieldInfo(rs, tableSize, scanParameters);
+                        fieldInfos.add(fieldInfo);
+                    }
+            	}
             } catch (SQLException e) {
                 throw new RuntimeException(e.getMessage());
             }
         } else {
+            long tableSize = connection.getTableSize(table);
             String query = null;
             if (dbType == DbType.ORACLE)
                 query = "SELECT COLUMN_NAME,DATA_TYPE FROM ALL_TAB_COLUMNS WHERE table_name = '" + table + "' AND owner = '" + database.toUpperCase() + "'";
@@ -241,24 +242,48 @@ public class DBConnection {
                 throw new RuntimeException("No query was specified to obtain the table structure for DbType = " + dbType.name());
             }
 
-            for (org.ohdsi.utilities.files.Row row : connection.query(query)) {
-                row.upperCaseFieldNames();
-                org.ohdsi.databases.FieldInfo fieldInfo;
-                if (dbType == DbType.TERADATA) {
-                    fieldInfo = new org.ohdsi.databases.FieldInfo(scanParameters, row.get("COLUMNNAME"));
-                } else {
-                    fieldInfo = new org.ohdsi.databases.FieldInfo(scanParameters, row.get("COLUMN_NAME"));
+            try (QueryResult qr = connection.query(query)) {
+                for (org.ohdsi.utilities.files.Row row : qr) {
+                    row.upperCaseFieldNames();
+                    org.ohdsi.databases.FieldInfo fieldInfo = queryRowToFieldInfo(row, tableSize, scanParameters);
+                    fieldInfos.add(fieldInfo);
                 }
-                if (dbType == DbType.TERADATA) {
-                    fieldInfo.type = row.get("COLUMNTYPE");
-                } else {
-                    fieldInfo.type = row.get("DATA_TYPE");
-                }
-                fieldInfo.rowCount = connection.getTableSize(table);
-                fieldInfos.add(fieldInfo);
             }
         }
         return fieldInfos;
+    }
+
+    static FieldInfo jdbcRowToFieldInfo(ResultSet rs, long tableSize, ScanParameters scanParameters) throws SQLException {
+        String columnName = rs.getString("COLUMN_NAME");
+        String typeName = rs.getString("TYPE_NAME");
+        int columnSize = rs.getInt("COLUMN_SIZE");
+        int decimalDigits = rs.getInt("DECIMAL_DIGITS");
+        int precisionRadix = rs.getInt("NUM_PREC_RADIX");
+        FieldInfo fieldInfo = new FieldInfo(scanParameters, columnName);
+        fieldInfo.type = typeName;
+        fieldInfo.rowCount = tableSize;
+        fieldInfo.typeLength = columnSize;
+        if (precisionRadix > 0) {
+            fieldInfo.decimalDigits = decimalDigits;
+            fieldInfo.precisionRadix = precisionRadix;
+        }
+        return fieldInfo;
+    }
+
+    FieldInfo queryRowToFieldInfo(org.ohdsi.utilities.files.Row row, long tableSize, ScanParameters scanParameters) {
+        String columnName;
+        String datatype;
+        if (dbType == DbType.TERADATA) {
+            columnName = row.get("COLUMNNAME");
+            datatype = row.get("COLUMNTYPE");
+        } else {
+            columnName = row.get("COLUMN_NAME");
+            datatype = row.get("DATA_TYPE");
+        }
+        org.ohdsi.databases.FieldInfo fieldInfo = new org.ohdsi.databases.FieldInfo(scanParameters, columnName);
+        fieldInfo.type = datatype;
+        fieldInfo.rowCount = tableSize;
+        return fieldInfo;
     }
 
     public ResultSet getFieldNamesFromJDBC(String table) {

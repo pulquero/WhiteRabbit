@@ -17,13 +17,13 @@
  ******************************************************************************/
 package org.ohdsi.databases;
 
-import org.ohdsi.utilities.files.Row;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class QueryResult implements Iterable<Row> {
+import org.ohdsi.utilities.files.Row;
+
+public class QueryResult implements Iterable<Row>, AutoCloseable {
     private String sql;
 
     private List<DBRowIterator> iterators = new ArrayList<>();
@@ -45,6 +45,7 @@ public class QueryResult implements Iterable<Row> {
         return iterator;
     }
 
+    @Override
     public void close() {
         for (DBRowIterator iterator : iterators) {
             iterator.close();

@@ -17,13 +17,6 @@
  ******************************************************************************/
 package org.ohdsi.databases;
 
-import org.apache.commons.lang.StringUtils;
-import org.ohdsi.databases.configuration.*;
-import org.ohdsi.utilities.files.IniFile;
-import org.ohdsi.utilities.files.Row;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.PrintStream;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -32,6 +25,17 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang.StringUtils;
+import org.ohdsi.databases.configuration.DBConfiguration;
+import org.ohdsi.databases.configuration.DBConfigurationException;
+import org.ohdsi.databases.configuration.DbSettings;
+import org.ohdsi.databases.configuration.DbType;
+import org.ohdsi.databases.configuration.ValidationFeedback;
+import org.ohdsi.utilities.files.IniFile;
+import org.ohdsi.utilities.files.Row;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * StorageHandler defines the interface that a database connection class must implement.
@@ -155,25 +159,38 @@ public interface StorageHandler {
      */
     default List<FieldInfo> fetchTableStructure(String table, ScanParameters scanParameters) {
         List<FieldInfo> fieldInfos = new ArrayList<>();
+        long tableSize = getTableSize(table);
         String fieldInfoQuery = getFieldsInformationQuery(table);
         if (fieldInfoQuery != null) {
             logger.warn("Obtaining field metadata through SQL query: {}", fieldInfoQuery);
-            QueryResult queryResult = getDBConnection().query(fieldInfoQuery);
-            for (Row row : queryResult) {
-                FieldInfo fieldInfo = new FieldInfo(scanParameters, row.getCells().get(0));
-                fieldInfo.type = row.getCells().get(1);
-                fieldInfo.rowCount = getTableSize(table);
-                fieldInfos.add(fieldInfo);
+            try (QueryResult queryResult = getDBConnection().query(fieldInfoQuery)) {
+                for (Row row : queryResult) {
+                    List<String> cells = row.getCells();
+                    FieldInfo fieldInfo = new FieldInfo(scanParameters, cells.get(0));
+                    fieldInfo.type = cells.get(1);
+                    fieldInfo.rowCount = tableSize;
+                    if (cells.size() == 5) {
+                        if (StringUtils.isNotEmpty(cells.get(2))) {
+                            fieldInfo.typeLength = Integer.parseInt(cells.get(2));
+                        }
+                        if (StringUtils.isNotEmpty(cells.get(3))) {
+                            fieldInfo.decimalDigits = Integer.parseInt(cells.get(3));
+                        }
+                        if (StringUtils.isNotEmpty(cells.get(4))) {
+                            fieldInfo.precisionRadix = Integer.parseInt(cells.get(4));
+                        }
+                    }
+                    fieldInfos.add(fieldInfo);
+                }
             }
         } else {
             logger.warn("Obtaining field metadata through JDBC");
-            ResultSet rs = getFieldsInformation(table);
             try {
-                while (rs.next()) {
-                    FieldInfo fieldInfo = new FieldInfo(scanParameters, rs.getString("COLUMN_NAME"));
-                    fieldInfo.type = rs.getString("TYPE_NAME");
-                    fieldInfo.rowCount = getTableSize(table);
-                    fieldInfos.add(fieldInfo);
+                try (ResultSet rs = getFieldsInformation(table)) {
+                    while (rs.next()) {
+                        FieldInfo fieldInfo = DBConnection.jdbcRowToFieldInfo(rs, tableSize, scanParameters);
+                        fieldInfos.add(fieldInfo);
+                    }
                 }
             } catch (
                     SQLException e) {

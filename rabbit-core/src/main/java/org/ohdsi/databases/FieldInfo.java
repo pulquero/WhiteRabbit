@@ -17,11 +17,6 @@
  ******************************************************************************/
 package org.ohdsi.databases;
 
-import org.ohdsi.utilities.DateUtilities;
-import org.ohdsi.utilities.StringUtilities;
-import org.ohdsi.utilities.collections.CountingSet;
-import org.ohdsi.utilities.collections.Pair;
-
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,11 +24,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.ohdsi.utilities.DateUtilities;
+import org.ohdsi.utilities.StringUtilities;
+import org.ohdsi.utilities.collections.CountingSet;
+import org.ohdsi.utilities.collections.Pair;
+
 public class FieldInfo {
     private final ScanParameters scanParameters;
     public String type;
+    public int typeLength;
     public String name;
     public String label;
+    public int decimalDigits;
+    public int precisionRadix;
     public CountingSet<String> valueCounts = new CountingSet<>();
     public long sumLength = 0;
     public int maxLength = 0;

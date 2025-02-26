@@ -17,19 +17,33 @@
  ******************************************************************************/
 package org.ohdsi.databases;
 
-import org.apache.commons.lang.StringUtils;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_ACCOUNT;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_AUTHENTICATOR;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_DATABASE;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_PASSWORD;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_SCHEMA;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_USER;
+import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.SNOWFLAKE_WAREHOUSE;
 
-import java.sql.*;
+import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 
-import org.ohdsi.databases.configuration.*;
+import org.apache.commons.lang.StringUtils;
+import org.ohdsi.databases.configuration.ConfigurationField;
+import org.ohdsi.databases.configuration.ConfigurationFields;
+import org.ohdsi.databases.configuration.ConfigurationValidator;
+import org.ohdsi.databases.configuration.DBConfiguration;
+import org.ohdsi.databases.configuration.DBConfigurationException;
+import org.ohdsi.databases.configuration.DbSettings;
+import org.ohdsi.databases.configuration.DbType;
+import org.ohdsi.databases.configuration.FieldValidator;
+import org.ohdsi.databases.configuration.ValidationFeedback;
 import org.ohdsi.utilities.collections.Pair;
 import org.ohdsi.utilities.files.IniFile;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static org.ohdsi.databases.SnowflakeHandler.SnowflakeConfiguration.*;
 
 /*
  * SnowflakeHandler implements all Snowflake specific logic required to connect to, and query, a Snowflake instance.
@@ -93,11 +107,13 @@ public enum SnowflakeHandler implements StorageHandler {
         return new Pair<>(configuration, dbSettings);
     }
 
+    @Override
     public DBConnection getDBConnection() {
         this.checkInitialised();
         return this.snowflakeConnection;
     }
 
+    @Override
     public String getUseQuery(String ignoredDatabase) {
         String useQuery = String.format("USE WAREHOUSE %s;", configuration.getValue(SNOWFLAKE_WAREHOUSE));
         logger.info("SnowFlakeHandler will execute query: {}", useQuery);
@@ -109,6 +125,7 @@ public enum SnowflakeHandler implements StorageHandler {
         return String.format("SELECT COUNT(*) FROM %s;", resolveTableName(tableName));
     }
 
+    @Override
     public String getRowSampleQuery(String tableName, long rowCount, long sampleSize) {
         return String.format("SELECT * FROM %s ORDER BY RANDOM() LIMIT %s", resolveTableName(tableName), sampleSize);
     }
@@ -147,11 +164,12 @@ public enum SnowflakeHandler implements StorageHandler {
             return null;    // not providing a query forces use of JDBC metadata
         } else {
             return String.format(
-                    "SELECT column_name, data_type FROM %s.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'",
+                    "SELECT column_name, data_type, numeric_precision, numeric_scale, numeric_precision_radix FROM %s.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'",
                     this.getDatabase().toUpperCase(), this.getSchema().toUpperCase(), tableName.toUpperCase());
         }
     }
 
+    @Override
     public String getTablesQuery(String database) {
         return String.format("SELECT TABLE_NAME FROM %s.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s'", this.getDatabase().toUpperCase(), this.getSchema().toUpperCase());
     }
@@ -163,6 +181,7 @@ public enum SnowflakeHandler implements StorageHandler {
         }
     }
 
+    @Override
     public DbType getDbType() {
         return this.dbType;
     }
@@ -190,6 +209,7 @@ public enum SnowflakeHandler implements StorageHandler {
         }
     }
 
+    @Override
     public DBConfiguration getDBConfiguration() {
 
         return this.configuration;
@@ -323,6 +343,7 @@ public enum SnowflakeHandler implements StorageHandler {
         return parts;
     }
 
+    @Override
     public String getDatabase() {
         return this.configuration.getValue(SNOWFLAKE_DATABASE);
     }
