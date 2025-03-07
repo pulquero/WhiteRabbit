@@ -37,6 +37,7 @@ public class FieldInfo {
     public String label;
     public int decimalDigits;
     public int precisionRadix;
+    public boolean isPrimaryKey = false;
     public CountingSet<String> valueCounts = new CountingSet<>();
     public long sumLength = 0;
     public int maxLength = 0;

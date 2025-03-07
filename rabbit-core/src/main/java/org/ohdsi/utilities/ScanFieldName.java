@@ -25,6 +25,7 @@ public interface ScanFieldName {
     String TYPE_LENGTH = "Type length";
     String DECIMAL_DIGITS = "Decimal digits";
     String RADIX = "Radix";
+    String KEY = "Key";
     String MAX_LENGTH = "Max length";
     String N_ROWS = "N rows";
     String N_ROWS_CHECKED = "N rows checked";

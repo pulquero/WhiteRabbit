@@ -535,7 +535,8 @@ public class SourceDataScan implements ScanParameters {
 				ScanFieldName.TYPE,
 				ScanFieldName.TYPE_LENGTH,
 				ScanFieldName.DECIMAL_DIGITS,
-				ScanFieldName.RADIX
+				ScanFieldName.RADIX,
+				ScanFieldName.KEY
 		};
 		addRow(sheet, header);
 
@@ -552,7 +553,8 @@ public class SourceDataScan implements ScanParameters {
 						fieldInfo.type,
 						fieldInfo.typeLength,
 						fieldInfo.decimalDigits,
-						fieldInfo.precisionRadix
+						fieldInfo.precisionRadix,
+						fieldInfo.isPrimaryKey ? "PK" : null
 				};
 
 				addRow(sheet, values);

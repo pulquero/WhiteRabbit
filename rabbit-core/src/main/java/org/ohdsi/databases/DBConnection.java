@@ -25,7 +25,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
 import org.ohdsi.databases.configuration.DbType;
@@ -200,9 +202,13 @@ public class DBConnection {
         } else if (dbType == DbType.MS_ACCESS || dbType == DbType.IMPALA) {
             try {
                 long tableSize = connection.getTableSize(table);
+                Set<String> primaryKeys = getPrimaryKeys(table);
                 try (ResultSet rs = getFieldNamesFromJDBC(table)) {
                     while (rs.next()) {
                         FieldInfo fieldInfo = jdbcRowToFieldInfo(rs, tableSize, scanParameters);
+                        if (primaryKeys.contains(fieldInfo.name)) {
+                            fieldInfo.isPrimaryKey = true;
+                        }
                         fieldInfos.add(fieldInfo);
                     }
             	}
@@ -284,6 +290,22 @@ public class DBConnection {
         fieldInfo.type = datatype;
         fieldInfo.rowCount = tableSize;
         return fieldInfo;
+    }
+
+    public Set<String> getPrimaryKeys(String table) {
+        Set<String> pks = new HashSet<>();
+        try {
+            DatabaseMetaData metadata = connection.getMetaData();
+            try (ResultSet rs = metadata.getPrimaryKeys(null, null, table)) {
+                while (rs.next()) {
+                    String columnName = rs.getString("COLUMN_NAME");
+                    pks.add(columnName);
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e.getMessage());
+        }
+        return pks;
     }
 
     public ResultSet getFieldNamesFromJDBC(String table) {
